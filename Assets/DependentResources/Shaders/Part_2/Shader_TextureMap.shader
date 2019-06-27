@@ -1,6 +1,6 @@
 ﻿// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
 
-Shader "Custom/Shader_TexureMap" {
+Shader "Custom/TexureMap" {
     Properties {
         _TintColor ("TintColor", Color) = (1, 1, 1, 1)
         _MainTex ("Texture", 2D) = "white" {}

@@ -14,28 +14,125 @@ https://catlikecoding.com/unity/tutorials/rendering/
 
 ------------------------------------------------------------------
 2. SHADER FUNDAMENTALS
-    Without lighting (& skybox - ambient light), objects look flat.
-    Vertex program alters vertices of the mesh (need vertex position in Object-space as input).
-    Fragment program alters fragment / pixel color (need pixel position in Screen-space as input).
-    Both vertex and fragment program uses the same data, so it is better to define a struct containing data they need.
-    By using ': POSITION', ': TEXCOORD0', we tell CPU to fill those attributes with appropriate values before passing to vertex program.
-    Property declaration must NOT have semi-colon at the end of the line.
-    struct declaration must have semi-colon at the end of the block.
-    UV map: [0,0] at the bottom left, [1, 1] aat the top right.
-    Unity stores extra data of material when a texture is available in special variables with _ST suffix (Extra data of '_MainTex' is '_MainTex_ST').
-    When UV coordinate gets out of range [0, 1], the 'WrapMode' property of texture will decide which pixel to sample. (Clamp = No Tiling & Offset outside of texture).
-    If number of texels (pixels on texture) doesn not match with projected screen area -> a "filtering" process happens to decide the final color:
-        Point = nearest texel
-        Bilinear = interpolate between 2 texels (both X & Y)
-            Texels < Pixels => blurry output
-            Texels > Pixels => skipped texels => too sharp -> should use a smaller version of that texture = mipmap.
-            If texture is too easy to detect mipmap level -> blurry & sharp parts will interleave
-        Trilinear = Bilinear + interpolate between mipmap levels
-    When projecting to screen, there might be an axis distorted more than the other -> same mipmap does not help. We need NPOT mipmap too -> anisotropic.
-    Anisotropic is per-texture setting, but we can still adjust the general setting in Quality window.
+    Basic:
+        Without lighting (& skybox - ambient light), objects look flat.
+        Vertex program alters vertices of the mesh (need vertex position in Object-space as input).
+        Fragment program alters fragment / pixel color (need pixel position in Screen-space as input).
+    Data:
+        Both vertex and fragment program uses the same data, so it is better to define a struct containing data they need.
+        By using ': POSITION', ': TEXCOORD0', we tell CPU to fill those attributes with appropriate values before passing to vertex program.
+        Property declaration must NOT have semi-colon at the end of the line.
+        struct declaration must have semi-colon at the end of the block.
+    Texture:
+        UV map: [0,0] at the bottom left, [1, 1] aat the top right.
+        Unity stores extra data of material when a texture is available in special variables with _ST suffix (Extra data of '_MainTex' is '_MainTex_ST').
+        When UV coordinate gets out of range [0, 1], the 'WrapMode' property of texture will decide which pixel to sample. (Clamp = No Tiling & Offset outside of texture).
+    Texture settings:
+        If number of texels (pixels on texture) doesn not match with projected screen area -> a "filtering" process happens to decide the final color:
+            Point = nearest texel
+            Bilinear = interpolate between 2 texels (both X & Y)
+                Texels < Pixels => blurry output
+                Texels > Pixels => skipped texels => too sharp -> should use a smaller version of that texture = mipmap.
+                If texture is too easy to detect mipmap level -> blurry & sharp parts will interleave
+            Trilinear = Bilinear + interpolate between mipmap levels
+        When projecting to screen, there might be an axis distorted more than the other -> same mipmap does not help. We need NPOT mipmap too -> anisotropic.
+        Anisotropic is per-texture setting, but we can still adjust the general setting in Quality window.
 
 ------------------------------------------------------------------
 3. COMBINING TEXTURES
     Multiplying colors leads to a darker color.
-    We can use un-used component in Vector to store custom data for better performance.
+    We can use un-used component in Vector to store custom data for better performance (float4.xy for the 1st float2, float4.zw for the 2nd float2)
     We can use a texture with solid color (only pure RGB & black) to mask areas for each textures = Splat Map.
+
+------------------------------------------------------------------
+4. THE FIRST LIGHT
+    Normal vector:
+        ': NORMAL' instructs CPU to fill Object-space normal vector for each vertex.
+        Use 'UnityObjectToWorldNormal' to convert normal vector from Object-space to World-space.
+        dot(N1, N2) = cos( angle_between(N1, N2) ) (since N1, N2 are normalized).
+    Diffuse & Specular:
+        If not specify "LightMode" in "Tags", _WorldSpaceLightPos0 is not available to use.
+        Basic lighting formula (diffuse): albedo * lightColor * DotClamped( lightPosition, normal ).
+        'Diffuse' could be understood as: texture color, clamped in [darkest, brightness] based on light direction.
+        'Specular' could be understood as: diffuse + reflection to camera.
+    Blinn-Phong:
+        'Phong reflection model' = Calculate accurate reflection direction then clamp by view direction.
+        'Blinn-Phong reflection model' = Use halfway vector ((view + light)/2) as local reflection, then clamp by vertex normal.
+        We can combine diffuse and specular, but just by adding them might produce too bright image.
+        'Energy conservation' is an adjustment between diffuse and specular (If specular is too strong, texture color will be ignored, like a mirror under the sun).
+        'Specular workflow': Control color and strength of both diffuse and specular.
+        'Metallic workflow': Control color of diffuse and energy conservation between diffuse and specular => simpler.
+    Physically-Based Shading:
+        'Physically-Based Shading': New algorithm to calculate light, substitute for the old Blinn-Phong technique. There is still diffuse & specular (different way of calculating), plus Fresnel.
+        PBS works best with Shader Level 3.0 => '#pragma target 3.0' is needed.
+        Unity has multiple implementations for PBS and BRDF (Bidirectional Reflectance Distribution Function) is one of them.
+
+------------------------------------------------------------------
+5. MULTIPLE LIGHTS
+    Multiple Passes:
+        If we add 1 more light to the scene, nothing happens -> Because our shader compute for 1 light only.
+        If we duplicate the 1st pass to make a 2nd pass, and edit "LightMode" = "ForwardAdd", then the 2nd pass will compute for ALL extra lights.
+        Dynamic batching is disabled for multiple lights.
+        More lights might result in more draw calls (since each light has to be computed in a separate pass).
+    Different light types:
+        '_WorldSpaceLightPos0' is position of point / spot light, but it is light direction for directional light => need to define DIRECTIONAL or POINT or SPOT before including "AutoLight.cginc".
+        It is better to use '#pragma multi_compile_fwdadd' to compile to different shaders (called shader variants), for each type of light.
+        'multi_compile_fwdadd' = DIRECTIONAL DIRECTIONAL_COOKIE POINT POINT_COOKIE SPOT.
+        Directional light could have cookie too, but it is treated as a different light type in AutoLight, with directive DIRECTIONAL_COOKIE.
+    Vertex light:
+        Normally, light is computed for each fragment / pixel -> limit 'Pixel Lights Count' in 'Quality'.
+        We can convert point lights to 'Vertex Light' to compute light for each vertex then interpolate for each fragment => FASTER.
+        You can specify which light is pixel / vertex light by 'Render Mode' = Important / Not Important.
+        If 'Render Mode' = Auto, Unity will decide which light should be vertex due to contribution to final image.
+    Spherical harmonic:
+        For multiple points on a circle edge, we have sine and cosine functions, to represent the entire function of those points.
+        In case of 3D space, we need spherical functions to represent multiple points on a surface of the sphere.
+        Why they are called 'spherical harmonic' ? Does not matter in term of Computer Graphics. It was first used to represent harmonic motion (https://en.wikipedia.org/wiki/Simple_harmonic_motion).
+        If we sample light intensity of every points, in every directions, we can represent those points as a single function, or spherical harmonic.
+        Usually, we have to construct that final function by adding multiple simpler functions together (each called a band).
+        Each band should be periodical, so we have frequency as its signature. 
+        Bands with small frequency contributes more to the final function.
+        Bands with high frequency contributes less to the final function and could be discarded for optimization.
+        Unity uses its own function with 3 bands, represented by 9 factors (for 3 axis), it is called 'ShadeSH9'.
+        9 images of spheres in the tutorial represent 9 factors in the table above it.
+        Unity computes color in RGB channels, so the final function is represented by 27 factors, stored in 7 float4 variables from 'UnityShaderVariables'.
+        When all pixel lights and vertex lights are used, the rest of them will be converted to use spherical harmonic.
+        Unity renders light from skybox using spherical harmonic.
+
+------------------------------------------------------------------
+6. BUMPINESS
+    Tangent:
+        A quad has only 4 vertices <=> 4 normal vectors => for each fragment, normal vector is just interpolated by the others => smooth transition.
+        If we store custom normal vectors in a texture called Normal Map, we can create rough surface.
+        If we store offset of each fragment comparing to the surface of triangles, we have a Height Map.
+        A tangent vector represents a linear function between heights of 2 texels on a height map, or in short, it is perpendicular to normal vector.
+        We calculate final normal vector of a fragment by cross product tangent vectors of U and V axis.
+        Instead of re-computing these tangent vectors & final normal vectors, we use Normal Map.
+    Normal map:
+        Warning: Normal map is encoded in RGB channels to represent 3D directions -> a downsampled normal map could not represent directions correctly (when using MipMap). 
+        But Unity will handle this issue when you specify a texture as a normal map.
+        More over, we can adjust the factor of this normal map as well, by a slider 'Bumpiness'.
+        Unity will even produce a new normal map with pre-multiplied bumpiness to use in-game, while keeping your original normal map intact.
+        Wondering about the color of the normal map ? 
+            In UV space, XY are encoded in RG channels, so the height offset (Z) must be encoded in B channels.
+            The normal vectors are in range [-1, 1], but the RGB channels are in [0, 255] => 0 in normal vector space will be represented as 128 in color space.
+            That explains why a flat surface will have the color of light blue (128, 128, 255) <=> (0, 0, 1).
+    DXT5nm:
+        Unity uses DXT5nm algorithm to encode normap by default, but not on mobile.
+        It only stores XY and we have to calculate Z ourselve since normal vector is normalized.
+        We should use function 'UnpackScaleNormal' from 'UnityStandardUtils.cginc' to unpack normal vector from normal map.
+        Remember that normal map is normalized, so if we scale XY, the Z component will decrease, leads to a flatter surface.
+    Blending normal maps:
+        For blending colors, we just multiply them.
+        For blending normal vectors, we could not multiply them.
+        A simple method is using their average, but the final normal vector will be flatter.
+        Because flat normal vector affects the final result -> should be ignored -> whiteout blending.
+        'UnityStandardUtils.cginc' offers function 'BlendNormals' to perform that blending with normalizing as well.
+    Binormal / Bitangent:
+        Normal and tangent vectors could represent 2D dimension, and we need another vector, perpendicular to those 2 to define object orientation in 3D space.
+        That vector is called binormal, or bitangent.
+        There is 2 vectors that could be perpendicular to both normal and tangent vectors, so we need to specify 1 of them by using 'binormal sign', stored as 4th component (w) in tangent vector.
+        In order to synchronize binormal vectors between 3D modeler, Unity and shader, we need to check:
+            - 3D modeler uses Mikkelsen's tangent space
+            - Unity could use tangent vectors from the mesh or generate them itself using mikktspace algorithm
+            - Shader computes binormal vectors in vertex program like Unity's standard shaders

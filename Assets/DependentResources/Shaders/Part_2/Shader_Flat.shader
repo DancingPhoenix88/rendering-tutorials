@@ -1,6 +1,6 @@
 ﻿// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
 
-Shader "Custom/Shader_Flat" {
+Shader "Custom/Flat" {
     // Exposed parameters in Inspector
     Properties {
         _TintColor ("TintColor", Color) = (1, 1, 1, 1) // no semi-colon (;)

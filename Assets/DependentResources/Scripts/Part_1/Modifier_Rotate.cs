@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class Modifier_Rotate : AModifier {
     [SerializeField] protected Vector3 amount = Vector3.zero;
-    //---------------------------------------------------------------------------------------------------s
+    //---------------------------------------------------------------------------------------------------
     public override Vector3 Apply (Vector3 point) {
         float radX = amount.x * Mathf.Deg2Rad;
         float radY = amount.y * Mathf.Deg2Rad;
