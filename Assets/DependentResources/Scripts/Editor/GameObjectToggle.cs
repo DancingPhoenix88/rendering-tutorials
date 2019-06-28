@@ -2,7 +2,7 @@
 using UnityEngine;
 
 public class GameObjectToggle : Editor {
-    [MenuItem("GameObject/Toggle GameObjects _v")]
+    [MenuItem("GameObject/Toggle GameObjects _c")]
     static void ToggleActivationSelection() {
         bool gotFirstState = false;
         bool state         = true;

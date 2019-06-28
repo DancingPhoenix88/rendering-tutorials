@@ -212,7 +212,88 @@ https://catlikecoding.com/unity/tutorials/rendering/
 
 ------------------------------------------------------------------
 9. SHADER GUI
-    Override default UI:
-        UI script runs in editor only -> put in Editor folder.
-        Extending ShaderGUI to override default material UI.
-        Shader must specifies which Inspector to use via "CustomEditor" attribute.
+    UI script runs in editor only -> put in Editor folder.
+    Extending ShaderGUI to override default material UI.
+    Shader must specifies which Inspector to use via "CustomEditor" attribute.
+    Add some more textures to mimic Unity's standard shader:
+        - Metallic Map: Instead of using a constant for the entire texture, we could adjust the metallic property using a separated texture. 
+                By using this texture, we can represent both metal & non-metal materials in a same texture.
+                Metallic value is stored in R channel of the texture.
+        - Smoothness Map: Similar to metallic, smoothness value is stored in A channel of Metallic Map or Albedo Map (We can choose which).
+        - Emission Map: Additive blending color to fragments without light.
+
+------------------------------------------------------------------
+10. MORE COMPLEXITY
+    Occlusion Map: 
+        The higher part in the mesh should cast shadow to lower part of itself (self-shadowing) and this is not possible with Normal Map.
+        So we needs to add Occlusion Map.
+        It is like a baked shadow map for this Albedo texture.
+        Occlusion value is stored in G channel of the texture.
+    Combine maps:
+        - Metallic: R
+        - Occlusion: G
+        - Smoothness: A
+        This is convenient but not a default behavior of Unity, you'll have to create your own shader.
+    Detail Mask:
+        We could add details by Detail Map and Detail Normal Map (in part 3).
+        But we don't want to apply those details to all fragments.
+        So we could adjust the Detail Map and Detail Normal Map, but what if these maps are tiled ?
+        We need a separate mask to control the masking, with same tiling & offset of those maps.
+        A new map is called Detail Mask.
+
+------------------------------------------------------------------
+11. TRANSPARENCY
+    Cutout:
+        Use 'Standard' shader, 'Cutout' RenderMode.
+        Use A channel in Albedo texture to control.
+        Pixels having alpha value < 'Alpha Cutoff' will be discarded.
+        Other pixels will be drawn with RGB color -> No semi-transparent.
+        Object will be rendered in Opaque queue.
+        Cutout could receive shadow.
+    Fade:
+        Use 'Standard' shader, 'Fade' RenderMode.
+        Use A channel in Albedo Tint Color to control.
+        All pixels will be drawn with RGBA color, additive blending with Tint Color.
+        All colors (diffuse, specular, reflection ...) are faded along with Alpha.
+        Object will be rendered in Transparent queue.
+        Fade could NOT receive shadow.
+    Transparent:
+        Use 'Standard' shader, 'Transparent' RenderMode.
+        Similar to Fade, but specular & reflection colors are maintained regardless the alpha.
+        I met an error when changing RenderMode to Transparent, it does not work. I had to re-create a new material, seems like Unity bug.
+        Transparent could NOT receive shadow.
+    Blend Modes: https://docs.unity3d.com/Manual/SL-Blend.html
+    ZWrite:
+        'On': This object should cover ones behind it (like fence)
+        'Off': This object should NOT cover ones behind it (like smoke)
+
+------------------------------------------------------------------
+12. SEMI-TRANSPARENT SHADOWS
+    Basic:
+        Our custom shaders do not support Cutout / Fade / Transparent shadow because we do not take Alpha into account.
+        Unity standar shader does support it.
+        The theory is simple. 
+            We clip or blend the shadow like the way we work with Albedo, in shadow caster pass.
+            In that way, we might need to sample Albedo map for Alpha value.
+            And Cutout shadow works very well.
+    Semi-transparent shadow:
+        But shadow map just stores the distance to surface blocking light, there is no info about how much light is blocked on semi-transparent object.
+        We need to fake that, by using dithering technique.
+        Dithering: Using 16 pixels (only full black or white color) to represent intensity of a 4x4 area. (Number of pixels can vary)
+        More white pixels -> brighter, more black pixels -> darker.
+        Dithering helps simulating gradient, and we use it to simulate transition between dark and light areas of shadow.
+        More: https://www.tutorialspoint.com/dip/concept_of_dithering.htm
+        Example: https://bjango.com/images/articles/gradients/dithering-extreme.png
+            The image on the right side uses same number of colors like the left one. By inserting white pixels in between, it creates an illusion of brighter color.
+    Dithering:
+        Internally, Unity dithers the scene (from light point-of-view) into 16 LOD and stores those textures in '_DitherMaskLOD'
+        We just need to select the right LOD and sample with UV (from light point-of-view => VPOS).
+        And those 16 textures are stored as a 3D textures with 16 layers.
+        Unity offers dithering texture with size = 4x4 -> there are 16 different combinations of B&W pixels, called 16 patterns.
+        We access these patterns by range [0, 1] / 16 steps = [0, 15] * 0.0625 = [0, 0.9375].
+        We select the LOD by 'alpha * 0.9375', which lets alpha controls the dithering pattern.
+    Swimming shadow:
+        Dithering is a simulation technique, shadow map is low-resolution.
+        Both of these limitations lead to unstable dithering when moving object / camera.
+        It causes swimming shadow.
+        So we add an option to use Cutout shadow on semi-transparent objects as alternative.
