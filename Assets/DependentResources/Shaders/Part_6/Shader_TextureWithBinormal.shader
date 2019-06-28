@@ -9,11 +9,11 @@
         [NoScaleOffset] _DetailNormalMap ("Detail Normals", 2D) = "bump" {}
         _DetailBumpScale ("Detail Bump Scale", Float) = 1
     }
-
+    //---------------------------------------------------------------------------------------------------
     CGINCLUDE
-    #define BINORMAL_PER_FRAGMENT // uncommen to see the differences (not so much)
+    #define BINORMAL_PER_FRAGMENT // uncomment to see the differences (not so much)
     ENDCG
-
+    //---------------------------------------------------------------------------------------------------
     SubShader {
         Pass {
             Tags { "LightMode" = "ForwardBase" }

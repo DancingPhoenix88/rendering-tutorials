@@ -4,6 +4,7 @@
         _MainTex ("Albedo", 2D) = "white" {}
         _Smoothness ("Smoothness", Range(0, 1)) = 0.5
     }
+    //---------------------------------------------------------------------------------------------------
     SubShader {
         Pass {
             Tags { "LightMode" = "ForwardBase" }

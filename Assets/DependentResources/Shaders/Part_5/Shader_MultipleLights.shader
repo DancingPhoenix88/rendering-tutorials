@@ -5,6 +5,7 @@
         [Gamma] _Metallic ("Metallic", Range(0, 1)) = 0
         _Smoothness ("Smoothness", Range(0, 1)) = 0.1
     }
+    //---------------------------------------------------------------------------------------------------
     SubShader {
         Pass {
             Tags { "LightMode" = "ForwardBase" }
@@ -16,7 +17,7 @@
             #include "SingleLight.cginc"
             ENDCG
         }
-
+        //---------------------------------------------------------------------------------------------------
         Pass {
             Tags { "LightMode" = "ForwardAdd" }
             Blend One One // Additive Blending with 1st light

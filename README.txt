@@ -136,3 +136,83 @@ https://catlikecoding.com/unity/tutorials/rendering/
             - 3D modeler uses Mikkelsen's tangent space
             - Unity could use tangent vectors from the mesh or generate them itself using mikktspace algorithm
             - Shader computes binormal vectors in vertex program like Unity's standard shaders
+
+------------------------------------------------------------------
+7. SHADOWS
+    Basic:
+        Without shadow, each mesh is rendered as an isolated object.
+        Unity supports soft shadow which is a filtering technique to simulate penumbra.
+        There are many ways to compute real-time shadows, Unity uses the most popular way - shadow mapping.
+    Shadow Mapping:
+        When shadow enabled, many passes are needed to render shadows (each light needs a separated pass) -> expensive.
+        Use Frame Debugger to see result after each pass:
+            - Render shadow map (from light point-of-view) x lights, using shader 'Hidden/Internal-ScreenSpaceShadows' to a quad, then filter it to create soft shadows
+            - Collect shadow map (from camera point-of-view) x lights
+            - Render meshes with shadows
+        Shadow map resolution is controlled by Shadow Quality setting.
+        Short shadow distance produces soft shadows close to camera, and discard shadows far away from the camera.
+        We can control shadow map resolution by camera distance via mipmapped shadow texture, called shadow cascade (visual debug is available in Scene view)
+        Shadow projection:
+            - Stable fit: distance to camera position (circle projection in Scene view)
+            - Close fit: distance to camera plane (rectangle projection in Scene view) -> higher performance but produce shadow swimming (blinking shadow edge)
+        'Shadow acne' is visible when using low quality hard shadows, we can fix it by adjusting bias & normal bias to push the shadow acne under the surface.
+    Anti-aliasing in shadow map:
+        MSAA: Multi-Sampling Anti-Aliasing: This is Unity's default algorithm, works on meshes, doesn't affect shadow map.
+        FXAA: (Post-processing effect): Performs anti-aliasing on screen-space -> work on both meshes and shadows. In fact, they perform with pixels on screen.
+    Custom shader - Directional light:
+        Need a separate pass with "LightMode"="ShadowCaster" to cast shadow (and passing world position).
+        Need to compile with directive 'SHADOWS_SCREEN' to receive shadow (and complex operations to project shadow correctly).
+        Directional light has 'ShadowType'='Hard & Soft Shadow' by default, other lights have shadow disabled by default.
+    Custom shader - Spot light:
+        Directive 'SHADOWS_SCREEN' only works with directional lights.
+        Use 'multi_compile_fwdadd_fullshadows' instead of 'multi_compile_fwdadd' to support shadow from different light types.
+        Spotlight uses perspective projection (instead of orthographic projection like directional light), then there is no shadow cascade (but the macro SHADOW_ATTENUATION handles the filtering for us already)
+        Spotlight has a position, so it just draw the shadow map, does not need to perform depth-checking pass, screen-space shadow pass -> less draw calls than directional light.
+        So, Spot light shadow is cheap but ugly.
+    Custom shader - Point light:
+        'UnityDecodeCubeShadowDepth' is used by 'AutoLight.cginc', but defined in 'UnityPBSLighting.cginc' -> 'UnityPBSLighting' needs to be included first.
+        Point light shines in all directions, so its view can be considered as a cube map.
+        Without cube map support, point light can still cast shadow, but with incorrect shadow map.
+        So, Point light shadow is expensive and ugly.
+
+------------------------------------------------------------------
+8. REFLECTION
+    Environment mapping:
+        Use macro 'UNITY_SAMPLE_TEXCUBE' to sample Skybox cubemap, stored in variable 'unity_SpecCube0'.
+        And remember to decode received color in HDR mode if needed.
+        Reflection should be changed when looking from different angles.
+    Reflection probe:
+        Reflection cube renders surrounded objets into 6 planes of a cube map.
+        It only renders static objects and baked result to use in real-time by default.
+        You can configure it to render all objects in real-time, but that is expensive due to rendering scenes 6 times to its cubemap.
+        When the cube map of a reflection probe is rendered, it will be merged with skybox cube map (depend on camera position).
+        So reflection probe works WITHOUT extra shader code.
+        Note: An object could be marked 'Static' for just 'Reflection probe'. Then it might move somewhere else but its reflected image is baked in the reflection probe cube map already.
+    Blurry reflection:
+        Blurry reflection could be achieved by using mipmap versions of baked environment map.
+        We could specify which level by macro 'UNITY_SAMPLE_TEXCUBE_LOD' and let _Smoothness parameter control this progress (not linear a relationship)
+        Normal map could add more rough details to the mesh surface, along with blurry reflection, to create realistic image.
+    Reflection probe advanced:
+        Reflection probes could reflect other ones as well.
+            We can control how many times light bounce back and forth between those probes by 'Environment Reflections' > 'Bounces' in Lighting window.
+        Outdoor scenes have infinte skybox so that reflection probe works quite well.
+            Indoor scenes require the reflection changing its size based on camera position.
+            So we have to use Box Projection option of Reflection probe.
+            Reflection probe ignores rotation and scaling of the GameObject to keep its projection box axis-aligned.
+            Box-object has another cool effect that helps reflection from different position looks like it has its own probe at that position, saving many computations.
+        A probe has fixed position.
+            Probe size should match surrounded environment to prevent impossible reflection.
+            Example: a probe is in the house, but its size is biigger than the house -> even an outside mirror can reflect the interior.
+            In case of overlapped area, we need to blend cube maps of many probes.
+            Reflection probdes modes:
+                - Off: Use only skybox as reflection source.
+                - Blend Probes: Blend overlapped probes.
+                - Blend Probes And Skybox: Blend over probes and consider skybox as another probe.
+                - Simple: No blend, use only the most important probe.
+
+------------------------------------------------------------------
+9. SHADER GUI
+    Override default UI:
+        UI script runs in editor only -> put in Editor folder.
+        Extending ShaderGUI to override default material UI.
+        Shader must specifies which Inspector to use via "CustomEditor" attribute.

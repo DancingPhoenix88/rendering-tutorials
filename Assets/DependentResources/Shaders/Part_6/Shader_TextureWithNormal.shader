@@ -7,6 +7,7 @@ Shader "Custom/TextureWithNormal" {
         [NoScaleOffset] _NormalMap ("Normals", 2D) = "bump" {}
         _BumpScale ("Bump Scale", Float) = 1
     }
+    //---------------------------------------------------------------------------------------------------
     SubShader {
         Pass {
             Tags { "LightMode" = "ForwardBase" }

@@ -3,6 +3,7 @@
         _TintColor ("Tint", Color) = (1, 1, 1, 1)
         _MainTex ("Albedo", 2D) = "white" {}
     }
+    //---------------------------------------------------------------------------------------------------
     SubShader {
         Pass {
             Tags { "LightMode" = "ForwardBase" } // NEW

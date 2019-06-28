@@ -1,7 +1,7 @@
 ﻿#if !defined(MY_LIGHTING_INCLUDED)
     #define MY_LIGHTING_INCLUDED
+    #include "UnityPBSLighting.cginc" // this needs to be included first to define UnityDecodeCubeShadowDepth for AutoLight usage (Part_7)
     #include "AutoLight.cginc"
-    #include "UnityPBSLighting.cginc"
     //---------------------------------------------------------------------------------------------------
     float4 _TintColor;
     sampler2D _MainTex;
@@ -17,6 +17,11 @@
 
         #if defined(VERTEXLIGHT_ON)
             float3 vertexLightColor : TEXCOORD2;
+        #endif
+
+        #if defined(SHADOWS_SCREEN) // this is added to support "Shadow receiving" in Part_7
+            // float4 _ShadowCoord : TEXCOORD3; // version 1: Manual
+            SHADOW_COORDS(3) // version 2: Use macro from AutoLight, without semi-colon
         #endif
     };
     //---------------------------------------------------------------------------------------------------
@@ -37,6 +42,27 @@
         output.normal = UnityObjectToWorldNormal( data.normal );
         output.uv = TRANSFORM_TEX( data.uv, _MainTex );
         output.worldPos = mul(unity_ObjectToWorld, data.position);
+
+        #if defined(SHADOWS_SCREEN) // this is added to support "Shadow receiving" in Part_7
+            // TEST 7.1: Receive shadow in screen-space (INCORRECT)
+            // output._ShadowCoord = output.position;
+
+            // TEST 7.2: Convert shadow map to world space (INCORRECT with Direct3D API using Y axis downward)
+            // output._ShadowCoord.xy = (output.position.xy + output.position.w) * 0.5;
+            // output._ShadowCoord.zw = output.position.zw;
+
+            // TEST 7.3: Convert shadow map to world space (MAY BE CORRECT)
+            // output._ShadowCoord.xy = (float2(output.position.x, -output.position.y) + output.position.w) * 0.5;
+            // output._ShadowCoord.zw = output.position.zw;
+
+            // TEST 7.4: Using built-in functions (auto handle Y axis issue) => CORRECT, but might fail on Tegra hardware
+            output._ShadowCoord = ComputeScreenPos(output.position);
+
+            // TEST 7.5: Using macros (FAILED, because it requires 2 struct with named attributes: position=>vertex, position=>pos)
+            // TRANSFER_SHADOW(output);
+            // This should be fixed by re-writing the entire shader -> Skip
+        #endif
+
         ComputeVertexLightColor(output);
         return output;
     }
@@ -52,7 +78,7 @@
         #endif
 
         light.ndotl = DotClamped(data.normal, light.dir);
-        UNITY_LIGHT_ATTENUATION(attenuation, 0, data.worldPos);
+        UNITY_LIGHT_ATTENUATION(attenuation, data, data.worldPos); // 2nd param changes from 0 to data to take shadow into account
         light.color = _LightColor0.rgb * attenuation;
         return light;
     }

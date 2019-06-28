@@ -9,6 +9,7 @@
         [NoScaleOffset] _DetailNormalMap ("Detail Normals", 2D) = "bump" {}
         _DetailBumpScale ("Detail Bump Scale", Float) = 1
     }
+    //---------------------------------------------------------------------------------------------------
     SubShader {
         Pass {
             Tags { "LightMode" = "ForwardBase" }
