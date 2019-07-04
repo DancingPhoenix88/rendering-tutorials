@@ -444,4 +444,29 @@ https://catlikecoding.com/unity/tutorials/rendering/
         We could define a cross-fade transition between levels and Unity will render 2 levels at the same time when camera falls into transition area.
 
 ------------------------------------------------------------------
-19. REALTIME GI, PROBE VOLUMES, LOD GROUPS
+19. GPU INSTANCING
+    GPU Instancing
+        Another name: Geometry Instancing.
+        Render same mesh with similar materials and transformation at the same time.
+        Reduce context switch & draw calls.
+        But this option is disabled on Unity by default, you have to turn it on manually.
+    Instance ID
+        Each instance needs an ID to pass to GPU via vertex program.
+        You could use macro 'UNITY_VERTEX_INPUT_INSTANCE_ID' to define this property in input structure.
+        In vertex program, we could use macro 'UNITY_SETUP_INSTANCE_ID(v);' to setup a unique Instance ID.
+        By those IDs, we could send transformation matrices of multiple instances to GPU via a constant buffer (normally 64KB).
+        Each instance needs 2 different matrices (unity_ObjectToWorld, unity_WorldToObject) = 128 bytes => max 512 instances.
+        When GPU Instancing is enabled, each shader instance does not hold these matrices internally, they must retrieve these from arrays maintained by Unity.
+    Variations
+        If we have multiple lights, some objects might be affected by a light when the rest might not.
+            So GPU Instancing does NOT have effect for this case, with Forward Rendering.
+            But it works with Deferred Rendering.
+        Material properties
+            If we change material properties by grabbing 'material' from 'MeshRenderer', Unity will duplicate that material -> not batched
+            (If we change 'sharedMaterial' -> we apply same values for all instances)
+            If we use function 'SetPropertyBlock', CPU will send those properties to GPU along with 2 transformation matrices (more data means less batched insttances)
+            But we need to declare those properties in the shader using some special macros 'UNITY_DEFINE_INSTANCED_PROP'.
+            Like matrices, added properties will be stored in separated arrays.
+            https://docs.unity3d.com/Manual/GPUInstancing.html
+        LOD Group
+            Meshes at different LOD are different meshes -> GPU Instancing is supported for same level meshes only.
