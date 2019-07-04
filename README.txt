@@ -142,7 +142,7 @@ https://catlikecoding.com/unity/tutorials/rendering/
     Basic:
         Without shadow, each mesh is rendered as an isolated object.
         Unity supports soft shadow which is a filtering technique to simulate penumbra.
-        There are many ways to compute real-time shadows, Unity uses the most popular way - shadow mapping.
+        There are many ways to compute realtime shadows, Unity uses the most popular way - shadow mapping.
     Shadow Mapping:
         When shadow enabled, many passes are needed to render shadows (each light needs a separated pass) -> expensive.
         Use Frame Debugger to see result after each pass:
@@ -183,8 +183,8 @@ https://catlikecoding.com/unity/tutorials/rendering/
         Reflection should be changed when looking from different angles.
     Reflection probe:
         Reflection cube renders surrounded objets into 6 planes of a cube map.
-        It only renders static objects and baked result to use in real-time by default.
-        You can configure it to render all objects in real-time, but that is expensive due to rendering scenes 6 times to its cubemap.
+        It only renders static objects and baked result to use in realtime by default.
+        You can configure it to render all objects in realtime, but that is expensive due to rendering scenes 6 times to its cubemap.
         When the cube map of a reflection probe is rendered, it will be merged with skybox cube map (depend on camera position).
         So reflection probe works WITHOUT extra shader code.
         Note: An object could be marked 'Static' for just 'Reflection probe'. Then it might move somewhere else but its reflected image is baked in the reflection probe cube map already.
@@ -297,3 +297,151 @@ https://catlikecoding.com/unity/tutorials/rendering/
         Both of these limitations lead to unstable dithering when moving object / camera.
         It causes swimming shadow.
         So we add an option to use Cutout shadow on semi-transparent objects as alternative.
+
+------------------------------------------------------------------
+13. DEFERRED SHADING
+    Basic
+        In default rendering pipeline of Unity (Forward Rendering), each object needs to be drawn multiple times, based on how many lights affected.
+        In Deferred Rendering pipeline, objects prepare for all kinds of data (position, normal, uv, color, depth ...) first, then each light is calculated later.
+        By doing that, object data is calculated only ONCE, and it does not matter much how many lights you have.
+        On the other side, we need G-Buffers to store calculated data (by fragments ~ resolution), which is possible for high-end computers, not mobiles.
+    Pass
+        We need a separate pass with 'LightMode' = 'Deferred'.
+        This pass is similar to the base pass.
+        In the fragment program of deferred pass, instead of returning fragment color, we store calculated information in 4 G-Buffers.
+        In the fragment program of other passes, we just need to get values from these buffers.
+    G-Buffers
+        0:  RGB = Diffuse albedo, A = Occlusion
+        1:  RGB = Specular, A = Smoothness
+        2:  World-space normal vectors (each axis needs 10 bits)
+        3:  Emission + Ambient light
+    Reflection
+        In Forward Rendering, we need to blend fragments of reflection cubemaps.
+        In Deferred Rendering, the reflection probes projects their cubemaps into other surfaces.
+        By default, probe projects entire cubemap surfaces into a surface, which may not look realistic to some viewpoints (like: floor reflects itself).
+            So we need to adjust Blend Distance parameter (only available in Deferred Rendering)
+        For horizontal plane, probes could render reflection inside a room to outside floor, which is incorrect.
+            So we need to adjust the vertical size of reflection box to control this issue.
+
+------------------------------------------------------------------
+14. FOG
+    Fog color blending
+        First we compute the distance between fragment's world position and camera position.
+        Then we compute the blend factor between fog color and fragment color by function 'UNITY_CALC_FOG_FACTOR_RAW'.
+        Finally, we use 'lerp' function to blend 2 colors.
+    Depth-based fog
+        2 objects with same depth could behaves differently to fog, because the distance to camera is different.
+        So we need to calculate the distance to camera plane, which is depth.
+        In order to do that, we need to store depth (z in Screen-space) to 'w' component of world position.
+        Then we use that instead of distance when computing fog.
+        Note: We migh need to use 'UNITY_Z_0_FAR_FROM_CLIPSPACE' to handle some hard cases (like reversed Z order)
+        Depth-based fog is useful for fixed camera distance (like platform games)
+    Multiple lights
+        Each light requires a separate pass to render.
+        And fog color is accumulated to become too bright.
+        So we need to make fog color BLACK in additive pass to keep original fog color (in base pass).
+    Deferred rendering
+        Fog is affected by camera distance and object distance.
+        Fog is computed after all lighting stuffs -> no fog in Deferred Rendering.
+        We have to create fog ourselves applying function 'OnRenderImage' to camera with a custom fog shader.
+        Since we are processing the entire texture, the vertex program just pass some parameters to fragment program.
+        In fragment program, we use function 'SAMPLE_DEPTH_TEXTURE' to get depth and blend fog color with fragment color.
+        Notice that we need to scale the depth based on camera range and cut the offset by near plane.
+        We will need to add attribute '[ImageEffectOpaque]' to function 'OnRenderImage' to render fog after opaque and before transparent.
+    Deferred rendering distance-based fog
+        We do NOT have vertex information for objects here, in camera.
+        So we have to calculate distance in a different way.
+        Firstly, we get 4 frustum corners of the camera to pass to shader (Beware of order: 0, 3, 1, 2 to match quad's vertices).
+        Secondly, we convert 4 frustum corners positions into 4 rays. Since our render texture is just a quad with 4 vertices, we use the formula 'u+2v' too match the order.
+        Finally, we scale the ray by the depth to get the distance.
+    Skybox with fog (only with Deferred Rendering)
+        We just need to consider the far plane of the camera as a quad and apply fog to it.
+        if (depth > 0.9999) unityFogFactor = 1; // 1 = apply fog to skybox, 0 = reject fog to skybox
+
+------------------------------------------------------------------
+15. DEFERRED LIGHTS
+    Render light, shadow by using data from G-Buffers.
+    And note that we are processing G-Buffers (via sampler2d _CameraGBufferTexture*), not each objects.
+    And each light renders its light map to a light buffer that we can access by 'sampler2D _LightBuffer';
+
+------------------------------------------------------------------
+16. STATIC LIGHTS
+    Light map
+        If the light properties are fixed and the objects are static too, we could pre-compute the light and shadow ONCE and apply later.
+        The result is stored in a Light Map.
+        Light should be set to 'Baked' mode to cache its lightmap, and it will NO LONGER affect dynamic objects.
+        Only diffuse light is stored in a light map, because specular light depends on camera angle.
+        It explains why the baked outdoor scene looks darker.
+        But using lightmap enable bounced indirect light calculated, making objects in shadow still got bounced light -> brighter.
+        Unity evens carries the color of bounced surface along when light bounces.
+        So a white sphere next to a green wall will have a light green color.
+        Adding support to light map in custom shaders takes a lot of effort.
+    Directional light map
+        Directional light map adds another map to store normal vectors of static objects to combine later.
+    Light probes
+        Baked light does not have any effect on dynamic objects.
+        We could pre-compute spherical harmonic information at some points and store them in light probes.
+        A light probe group could have many probes, some of them will be interpolated to add indirect light to dynamic objects.
+        When selected, a dynamic object show connections to light probes affecting it (Drag it in and out of shadowed area to see the difference)
+        Notice: Since our light is set to 'Baked' mode, there is no Shadow to dynamic objects.
+
+------------------------------------------------------------------
+17. MIXED LIGHTS
+    Mixed
+        Baked light does not affect dynamic objects -> no dynamic shadow.
+        Switch light mode to 'Mixed' will bake the indirect light to light map, without shadow.
+        In this mode:
+            - Shadow is realtime -> applied to all objects
+            - Indirect light is from light map (static objects) and light probes (dynamic objects)
+        It explains why this mode is called 'Mixed'.
+    Shadowmask
+        Indirect light is stored in light map due to 'Light > Scene > Mixed Lighting > Lighting Mode' = Baked Indirect.
+        We can bake shadow from static objects to light map by setting it to 'Shadowmask'
+        In this mode: 
+            - Shadow is from shadowmask for static objects
+            - Shadow is realtime for dynamic objects
+            - Indirect light is from light map (static objects) and light probes (dynamic objects)
+        In Deferred Rendering, a shadowmask needs an additional G-Buffer (5th), which might not be supported in some platforms.
+        Shadowmask helps baked shadow for static objects, which is faster than just baked indirect light and reatime shadow.
+        But, static objects do NOT cast shadow to dynamic objects.
+    Distance shadowmask
+        This is an advanced version of shadowmask.
+        All static objects have their own shadowmaskes, to cast shadow on dynamic objects.
+        This is expensive (not as expensive as realtime), but remember realtime shadow does not have indirect light.
+    Shadowmask buffer
+        Shadowmask just needs 1 channel to store its information.
+        So we can store 4 shadowmaskes in a RGBA texture (5th G-Buffer).
+        And that is why shadowmask only support max 4 overlapping lights.
+    Subtractive
+        If the scene has only 1 directional light, we could fake the shadow from static objects to dynamic objects by decreasing shadowed area in light map.
+        So for dynamic objects, when we compute the indirect light, we subtract an amount based on static object shadowmask.
+    Comparisons: https://docs.unity3d.com/2018.2/Documentation/uploads/Main/BestPracticeLightingPipeline5.svg
+
+------------------------------------------------------------------
+18. REALTIME GI, PROBE VOLUMES, LOD GROUPS
+    Realtime Global Illumination
+        Baked indirect light and shadow works well for static light.
+        For dynamic light, we could only bake the bouncing direction and amount between static surfaces, to speed up calculating indirect light and shadow in realtime
+        This is called Realtime Global Illumination (Realtime GI), with options in Light > Scene > Realtime Lighting > Realtime Global Illumination.
+        When this option is disabled, dynamic light will contribute direct light and shadow only.
+        When this option is enabled, dynamic light will contribute direct light, shadow and indirect light.
+        GI works very well for 1 directional light (normally the sun).
+    Emissive Light
+        For materials having Emission texture, they could emit light to surrounded objects too.
+        Since it is NOT a proper light, it is considered as GI.
+        You could control the emitted light will be baked or realtime in Material Inspector
+    Light Probe Proxy Volumes (LPPV)
+        A dynamic object uses baked light data from light probes to compute its color.
+        But it uses only one point to sample data.
+        It works well for small object.
+        But for big object, whose parts laid on different light condition, we need many sample points.
+        In order to do that, we need LPPV to setup sample points on the object itself.
+    LOD Groups
+        https://docs.unity3d.com/Manual/class-LODGroup.html
+        Level-Of-Detail (LOD) is an optimization technique, to use a simpler version of an object (mesh, texture, material) when it is far from camera.
+        We could configure when the transition between LODs occur in a LOD Group.
+        When indirect light and shadow are baked, only LOD0 is calculated.
+        We could define a cross-fade transition between levels and Unity will render 2 levels at the same time when camera falls into transition area.
+
+------------------------------------------------------------------
+19. REALTIME GI, PROBE VOLUMES, LOD GROUPS
