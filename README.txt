@@ -470,3 +470,90 @@ https://catlikecoding.com/unity/tutorials/rendering/
             https://docs.unity3d.com/Manual/GPUInstancing.html
         LOD Group
             Meshes at different LOD are different meshes -> GPU Instancing is supported for same level meshes only.
+
+------------------------------------------------------------------
+20. PARALLAX
+    Parallax mapping
+        Normal map gives more depth to object but affects the light only.
+        When we view the object from a shallow angle, it still looks flat.
+        Because normal map only contains information about direction.
+        In Parallax map (or Height map), we could store the depth of the surface.
+        When combining with normal map, it creates realistic illusion about depth.
+    Offset limit
+        In order to do that, we need to shift the UV of the Albedo, based on depth and viewpoint, following tangent vectors.
+        Firstly we get the tangent vectors in object-space.
+        Secondly we convert it to camera-space.
+        Thirdly we project it to the surface plane (by discarding its z component).
+        Finally we offset the UV based on projected vectors and parallax strength.
+        It works well for small parallax strength and much better than just a normal map.
+        But it looks bad for high parallax strength.
+        It is because our direction vectors have length = 1 -> it should have z = 1 to match with parallax strength.
+        We could improve this by scaling the tangent vector camera-space by a factor (Unity uses 1 / (z + 0.42)).
+        But it still looks bad if the parallax strength is too high.
+    Parallax detail
+        Unity standard shader only takes Albedo when calculating Height Map.
+        So if you want to apply Parallax effect to Detail Albedo, you will have to make a custom shader.
+        There is no different between Albedo and Detail Albedo when applying Parallax.
+        But you might want to use different tiling and offset for Detail Albedo, then you need to scale the parallax strength as well.
+    Shadow
+        Note that parallax map / height map only create an illusion.
+        The shadow casted on object surface is still flat.
+    Raymarching
+        Unity standard shader only supports simple Offset Parallax Mapping (via Height map).
+        There are many variations of parallax mapping to fix the 'high parallax strength' issue.
+        We do that by jump mutiple small steps in a ray (from camera position to object surface) - this is called Raymarching.
+        We stop marching when hits virtual surface (caused by Height Map).
+        The smaller steps, the closer result (and more CPU consuming due to more steps).
+            Steep Parallax Mapping:         Same length steps.
+            Parallax Occlusion Mapping:     Same length steps first. When found a pair (last step, this step) which is in-out the surface, interpolate the surface by line-line intersection.
+            Relief Mapping:                 Binary search to find surface when found a pair (last step, this step) which is in-out the surface.
+    Dynamic batching
+        2 meshes with dynamic batching could break the parallax effect (only in Game view / Build).
+        Because Unity does not normalize normal & tangent vectors of combined meshes.
+        If you want to fix this issue, you will need a custom shader to normalize these vectors before computing.
+
+------------------------------------------------------------------
+21. WIREFRAME
+    Create a custom shader to render lines between vertices to create a wireframe of the mesh.
+    This shader is different with wireframe rendering mode of Unity:
+        - Be able to run in Game view / Build.
+        - Configurable
+        - Render displaced vertices, not original vertices (Useful to debug Tessellation)
+        - Use 'geometry' program (vertex -> geometry -> interpolate -> fragment)
+
+------------------------------------------------------------------
+22. TESSELLATION
+    Tessellation
+        Cutting a triangle intro smaller triangles.
+        It adds more vertices to the mesh.
+        Added vertices could be displaced to create non-smooth surface like rock mountain, water ...
+        Use 'Tessellation' program (vertex -> hull -> Tessellation -> domain -> geometry -> interpolate -> fragment)
+    Hull
+        Hull program works on 'InputPatch', which is a collection of mesh vertices (in Unity, it is a triangle -> 3 vertices)
+        It instructs the GPU to sub-divide the patch, by calculating Tessellation factors.
+        These factors will be used by Tessellation program to list new vertices in Barycentric coordinate.
+        A triangle needs 4 factors: 3 for vertices, 1 for center point (odd=triangle, even=point)
+        Factor falls into a range of [1,64]
+        There are 3 partitioning mode in Hull program:
+            'integer':          Divide edges and add new center points by integer numbers
+            'fractional_odd':   Only divide by odd number. When transition between sub-division levels, small triangles will shrink or grow (blending between 2 levels)
+            'fractional_even':  Similar to 'fractional_odd', but only works on even numbers. This mode requires min number = 2 -> less popular than 'fractional_odd'
+        4 factors of a triangle could be dynamic.
+            Example: Divide edge by fixed lengh -> number of sub-divisions depends on original edge length (needs '_TESSELLATION_EDGE' shader feature)
+            Other methods: 
+                Based on occupied area on screen
+                Based on view distance
+    Domain
+        Domain program works on Tessellation instruction to create new vertices, before sending them to Geometry program.
+    Unity
+        Unity offers Tessellation in 'Tessellation.cginc'
+        https://docs.unity3d.com/520/Documentation/Manual/SL-SurfaceShaderTessellation.html
+        Partitioning mode is 'fractional_odd'
+        Methods:
+        - Fixed: Divide all triangles by fixed factors. Suitable for objects usually occupy same size on screen.
+        - View distance: Divide triangles based on distance from vertices to camera position. Suitable for most use cases.
+        - Edge length: Divide triangles to maintain edge length. Suitable for objects with different triangle size.
+        - Phong: Divide triangles based on normal vectors. Suitable for smoothen low-poly meshes.
+
+------------------------------------------------------------------
+23. SURFACE DISPLACEMENT
