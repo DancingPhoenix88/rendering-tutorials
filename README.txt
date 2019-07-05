@@ -557,3 +557,26 @@ https://catlikecoding.com/unity/tutorials/rendering/
 
 ------------------------------------------------------------------
 23. SURFACE DISPLACEMENT
+    Using tessellation to add more vertices
+    Displace vertices based on normal map and height map
+
+------------------------------------------------------------------
+24. BLOOM
+    Visual effect
+        Something too bright will make surrounded pixels blurry with its color
+        This is a post processing effectt (work on camera)
+        In order to achieve this effect, we need to render captured image from camera to a separate texture, then we process that texture and 'blit' it back to the screen
+    Steps
+        Step 1: We create a blurry version of original texture
+            Step 1.1: We downsample the texture progressively (reduce texture size by half each iteration)
+            Step 1.2: We upsample the texture progressively (double texture size each iteration)
+                Note that when we downsample, we take 4 pixels in range (-1, 1) to compute the average color
+                But when we upsample, we will take 4 pixels in range (-0.5, 0.5)
+                There are many filtering technique to create blurry image (we use simple algorithm in this tutorial)
+        Step 2: We blend all the temporary textures and add to original texture to apply bloom effect
+    Parameters:
+        'Iteration':        How big is the blurry area
+        'Threshold':        Ignore color darker than this
+        'Soft Threshold':   Smooth transition between bloom and non-bloom area
+        'Intensity':        How bright the bloom is
+        'Debug':            Only draw last blended texture without merging to original texture
