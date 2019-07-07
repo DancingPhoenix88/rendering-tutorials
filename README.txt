@@ -580,3 +580,21 @@ https://catlikecoding.com/unity/tutorials/rendering/
         'Soft Threshold':   Smooth transition between bloom and non-bloom area
         'Intensity':        How bright the bloom is
         'Debug':            Only draw last blended texture without merging to original texture
+
+------------------------------------------------------------------
+25. DEPTH OF FIELD
+    Visual effect
+        Objects in range-of-focus should have sharp image
+        Objects out of range-of-focus should have blurry image
+        This is  post processing effect (work on camera)
+        In order to achieve this effect, we need to render captured image from camera to a separate texture, then we process that texture and 'blit' it back to the screen
+    Steps
+        Step 1: Compute focus range from depth buffer and camera position
+        Step 2: Downsample original texure for better blur
+        Step 3: Produce bokeh on temporary texture
+        Step 4: Blur the bokeh texture
+        Step 5: Combine bokeh texture with original texture, based on focus range
+    Parameters:
+        'Focus Distance':   Distance to camera, which produce sharpest image. Objects closer or further from this distance are blurry.
+        'Focus Range':      Offset from focus distance, which produce sharp image. Objects in this range are quite sharp, objects out of this range are completely blur.
+        'Bokeh Radius':     Bokeh size. Technically, how far pixels are sampled while producing Bokeh.
