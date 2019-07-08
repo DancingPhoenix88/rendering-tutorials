@@ -598,3 +598,8 @@ https://catlikecoding.com/unity/tutorials/rendering/
         'Focus Distance':   Distance to camera, which produce sharpest image. Objects closer or further from this distance are blurry.
         'Focus Range':      Offset from focus distance, which produce sharp image. Objects in this range are quite sharp, objects out of this range are completely blur.
         'Bokeh Radius':     Bokeh size. Technically, how far pixels are sampled while producing Bokeh.
+    Foreground vs background
+        Just blending source texture with bokeh texture is not enough.
+        When there is an object closer to the camera than the focus range, part of it will occupy in the focus range on screen, but that part is sharp -> incorrect.
+        So we need to deal with 'closer' and 'further' differently.
+        Finally, we need to tone the effect down to keep original brightness.

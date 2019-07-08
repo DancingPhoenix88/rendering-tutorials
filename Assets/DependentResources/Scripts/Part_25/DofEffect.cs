@@ -39,9 +39,7 @@ public class DofEffect : MonoBehaviour {
         dofMaterial.SetTexture("_CoCTex", cocTexture);
         dofMaterial.SetTexture("_DoFTex", dof0);
 
-        // Compute focus range
-        Graphics.Blit(source, cocTexture, dofMaterial, PASS_CIRCLE_OF_CONFUSION);
-
+        Graphics.Blit(source, cocTexture, dofMaterial, PASS_CIRCLE_OF_CONFUSION);   // Compute focus range
         Graphics.Blit(source, dof0, dofMaterial, PASS_PRE_FILTER);      // Downsample source texture to DOF0
         Graphics.Blit(dof0, dof1, dofMaterial, PASS_BOKEH);             // Produce Bokeh in DOF-1
         Graphics.Blit(dof1, dof0, dofMaterial, PASS_POST_FILTER);       // Blur the bokeh

@@ -59,8 +59,26 @@ Shader "Custom/Camera/DepthOfField" {
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            half Weigh (half3 c) {
+                return 1 / (1 + max(max(c.r, c.g), c.b));
+            }
+            //---------------------------------------------------------------------------------------------------
             half4 frag (Interpolators i) : SV_Target {
                 float4 o = _MainTex_TexelSize.xyxy * float2(-0.5, 0.5).xxyy;
+
+                half3 s0 = tex2D(_MainTex, i.uv + o.xy).rgb;
+                half3 s1 = tex2D(_MainTex, i.uv + o.zy).rgb;
+                half3 s2 = tex2D(_MainTex, i.uv + o.xw).rgb;
+                half3 s3 = tex2D(_MainTex, i.uv + o.zw).rgb;
+                
+                half w0 = Weigh(s0);
+                half w1 = Weigh(s1);
+                half w2 = Weigh(s2);
+                half w3 = Weigh(s3);
+                
+                half3 color = s0 * w0 + s1 * w1 + s2 * w2 + s3 * w3;
+                color /= max(w0 + w1 + w2 + w3, 0.00001);
+
                 half coc0 = tex2D(_CoCTex, i.uv + o.xy).r;
                 half coc1 = tex2D(_CoCTex, i.uv + o.zy).r;
                 half coc2 = tex2D(_CoCTex, i.uv + o.xw).r;
@@ -68,7 +86,8 @@ Shader "Custom/Camera/DepthOfField" {
                 half cocMin = min(min(min(coc0, coc1), coc2), coc3);
                 half cocMax = max(max(max(coc0, coc1), coc2), coc3);
                 half coc = cocMax >= -cocMin ? cocMax : cocMin;
-                return half4(tex2D(_MainTex, i.uv).rgb, coc);
+                
+                return half4(color, coc);
             }
             ENDCG
         }
@@ -133,19 +152,29 @@ Shader "Custom/Camera/DepthOfField" {
             }
             //---------------------------------------------------------------------------------------------------
             half4 frag (Interpolators i) : SV_Target {
-                half3 color = 0;
                 half weight = 0;
+                half3 bgColor = 0, fgColor = 0;
+                half bgWeight = 0, fgWeight = 0;
+                half coc = tex2D(_MainTex, i.uv).a;
                 for (int k = 0; k < kernelSampleCount; k++) {
                     float2 o = kernel[k] * _BokehRadius;
                     half radius = length(o);
                     o *= _MainTex_TexelSize.xy;
                     half4 s = tex2D(_MainTex, i.uv + o);
-                    half sw = Weigh(abs(s.a), radius);
-                    color += s.rgb * sw;
-                    weight += sw;
+
+                    half bgw = Weigh(max(0, min(s.a, coc)), radius);
+                    bgColor += s.rgb * bgw;
+                    bgWeight += bgw;
+
+                    half fgw = Weigh(-s.a, radius);
+                    fgColor += s.rgb * fgw;
+                    fgWeight += fgw;
                 }
-                color *= 1.0 / weight;
-                return half4(color, 1);
+                bgColor *= 1 / (bgWeight + (bgWeight == 0));
+                fgColor *= 1 / (fgWeight + (fgWeight == 0));
+                half bgfg = min(1, fgWeight / kernelSampleCount * 3.14159265359 );
+                half3 color = lerp(bgColor, fgColor, bgfg);
+                return half4(color, bgfg);
             }
             ENDCG
         }
@@ -175,7 +204,10 @@ Shader "Custom/Camera/DepthOfField" {
                 half coc = tex2D(_CoCTex, i.uv).r;
                 half4 dof = tex2D(_DoFTex, i.uv);
                 half dofStrength = smoothstep(0.1, 1, abs(coc));
-                half3 color = lerp(source.rgb, dof.rgb, dofStrength);
+                half3 color = lerp(
+                    source.rgb, dof.rgb,
+                    dofStrength + dof.a - dofStrength * dof.a
+                );
                 return half4(color, source.a);
             }
             ENDCG
