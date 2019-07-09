@@ -564,7 +564,7 @@ https://catlikecoding.com/unity/tutorials/rendering/
 24. BLOOM
     Visual effect
         Something too bright will make surrounded pixels blurry with its color
-        This is a post processing effectt (work on camera)
+        This is a post processing effect (work on camera)
         In order to achieve this effect, we need to render captured image from camera to a separate texture, then we process that texture and 'blit' it back to the screen
     Steps
         Step 1: We create a blurry version of original texture
@@ -603,3 +603,47 @@ https://catlikecoding.com/unity/tutorials/rendering/
         When there is an object closer to the camera than the focus range, part of it will occupy in the focus range on screen, but that part is sharp -> incorrect.
         So we need to deal with 'closer' and 'further' differently.
         Finally, we need to tone the effect down to keep original brightness.
+
+------------------------------------------------------------------
+26. FXAA
+    Visual effect
+        A classical anti-aliasing technique.
+        SSAA:   Supersampling anti-aliasing - Render scene in higher resolution then downsample -> easy but 4x the pixels -> fillrate is the bottleneck.
+        MSAA:   Multi-sampling anti-aliasing - Only render the edge to hgher resolution then downsample -> better performance than SSAA.
+        FXAA:   Fast Approximate anti-aliasing - Reduce contrast selectively to approximate anti-aliasing effect.
+    Steps:
+        Step 1: Calculate luminance (FXAA works on greyscale version of image for easier contrast computations).
+            We will store luminance in Alpha channel or Green channel.
+        Step 2: Calculate contrast by (highest_luminance - lowest_luminance), sampled from a pixel and 8 surrounded ones.
+            We should skip areas with too low contrast (comparing to a fixed threshold and adjacent pixels).
+        Step 3: Calculate blend factor by 4 small steps:
+            Step 3.1: Calculate average of 8 surrounded pixels (straight adjacent pixels are counted twice).
+            Step 3.2: Calculate difference between averaged value with luminance of center pixel.
+            Step 3.3: Normalize the difference by dividing to contrast at that point.
+            Step 3.4: Smooth transition between contrast areas
+        Step 4: Calculate blend direction
+            Horizontal edge is detected by formula: abs(n + s - 2m)
+            vertices edge is detected by formula: abs(w + e - 2m)
+            We can improve the formula by adding diagonal pixels too.
+            Next, we need to calculate the direction by comparing the differences in horizontal and vertical direction.
+            The result is the offset of pixel we will blend with pixel in the center.
+        Step 5: Blend
+    Parameters:
+        'Luminance Source':     Lumiance is pre-computed and store in Alpha / Green channel, or need to be computed now.
+        'Contrast Threshold':   Min contrast difference to detect edge.
+        'Relative Threshold':   Min relative contrast difference to detect edge (relatively to surrounded pixels)
+        'Subpixel Blending':    How much surrounded pixels affect the ones on the edge
+        'Low Quality':          How many steps each pixels need to detect long edge
+        'Gamma Blending':       Encode luminance in Gamma or Linear space
+
+------------------------------------------------------------------
+27. Triplanar Mapping
+    Visual effect
+        For mesh, we can apply texture to mesh surface using UV coordinate.
+        For procedural mesh (like terrain), we do not have UV coordinate.
+        So we have to apply texture to mesh surface by other methods.
+        Triplanar mapping is 1 of them.
+        https://gamedevelopment.tutsplus.com/articles/use-tri-planar-texture-mapping-for-better-terrain--gamedev-13821
+        In planar mapping, only the world coordinate matters.
+        But it will fail if the surface orientation is different than projection direction.
+        So the solution is project 3 times by X, Y, Z axis and blend when possible.
